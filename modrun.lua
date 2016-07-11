@@ -274,7 +274,7 @@ function modrun.setup()
 end
 
 modrun._DESCRIPTION = 'An alternative run function module for Love2D with support for callbacks and additional events'
-modrun._VERSION     = 'modrun v1.0.1'
+modrun._VERSION     = 'modrun v1.1.0'
 modrun._URL         = 'http://github.com/Asmageddon/modrun'
 modrun._LICENSE     = 'MIT LICENSE <http://www.opensource.org/licenses/mit-license.php>'
 
