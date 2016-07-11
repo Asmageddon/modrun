@@ -31,6 +31,7 @@
 --  * pre_update(dt) - An event that runs before love.update()
 --  * post_update(dt) - An event that runs after love.update()
 --  * postprocess(draw_dt) - A second draw event, called after draw, can be used to draw overlay, profiling info, etc.
+--  * modrun.push(event, ...) - Push an event to the queue. Essentially same as love.event.push()
 -- 
 -- The library provides the following functions:
 --  * modrun.setup() - Sets modrun up, replacing the original love.run
@@ -76,7 +77,7 @@ modrun.base_handlers = {
     end,
 }
 -- Default to love.handlers for any handlers not specified in the table
-setmetatable(modrun.base_handlers, {__index = love.handlers})
+setmetatable(modrun.base_handlers, {__index = function(t, key) return rawget(love.handlers, key) end})
 
 -- Each entry has the format of: { callback, on_error, self_obj, enabled }
 modrun.callbacks = {} 
@@ -202,6 +203,12 @@ function modrun.shutdown()
     if love.audio then
         love.audio.stop()
     end
+end
+
+-- Mirrors the functionality of love.event.push
+function modrun.push(event, ...)
+    error_check(event and modrun.base_handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
+    return love.event.push(event, ...)
 end
 
 -- The run function to replace `love.run` 

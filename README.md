@@ -21,5 +21,6 @@
   * **modrun.enableCallback(event, callback)** - Enables a callback
   * **modrun.disableCallback(event, callback)** - Disables a callback, preventing it from being processed
   * **modrun.setFramerateLimit(fps)** - Set maximum FPS to the given value. Pass 0 or false to disable the limit. Only applies if vsync is disabled
+  * **modrun.push(event, ...)** - Push an event to the queue. Essentially same as **love.event.push()**
 
 For detailed documentation, check source
