@@ -31,7 +31,6 @@
 --  * pre_update(dt) - An event that runs before love.update()
 --  * post_update(dt) - An event that runs after love.update()
 --  * postprocess(draw_dt) - A second draw event, called after draw, can be used to draw overlay, profiling info, etc.
---  * modrun.push(event, ...) - Push an event to the queue. Essentially same as love.event.push()
 -- 
 -- The library provides the following functions:
 --  * modrun.setup() - Sets modrun up, replacing the original love.run
@@ -62,7 +61,6 @@ modrun.max_fps = 60
 modrun.base_handlers = {
     pre_quit = noop,
 
-    dispatch = noop,
     pre_update = noop,
     post_update = noop,
     load = function(arg)
@@ -76,6 +74,49 @@ modrun.base_handlers = {
         if love.update then love.update(dt) end
     end,
 }
+-- Dispatches events to base handlers, and calls callbacks
+-- @param event - The name of the event for which the dispatch is being handled
+-- @param ... - Arguments associated with the event
+-- @returns `true` if any of the event handlers has returned `true`, `false` otherwise
+function modrun.base_handlers.dispatch(event, ...)
+    local args = {...}
+    local cancel = false
+
+    if event ~= "dispatch" then
+        cancel = modrun.base_handlers[event](...)
+        cancel = cancel or modrun.base_handlers.dispatch("dispatch", event, ...)
+        if cancel then return true end
+    end
+
+    for _, entry in pairs(modrun.callbacks[event] or {}) do
+        local cb, err_handler, self_obj, enabled = unpack(entry)
+
+        if enabled then
+            if err_handler == nil then
+                -- If no error handler was provided, we just let the error propagate down the stack
+                cancel = self_obj and cb(self_obj, ...) or cb(...)
+            else
+                -- If an error handler was passed, handle any potential errors via it
+                local success, result
+                if self_obj ~= nil then
+                    success, result = xpcall(cb, function(err) debug.traceback(err) end, self_obj, ...)
+                    if not success then
+                        err_handler(self_obj, {event, ...}, result) -- Pass traceback as well
+                    end
+                else
+                    success, result = xpcall(cb, function(err) debug.traceback(err) end, ...)
+                    if not success then
+                        err_handler({event, ...}, result) -- Pass traceback as well
+                    end
+                end
+                if success then cancel = result end
+            end
+        end
+        if cancel then return true end
+    end
+
+    return false
+end
 -- Default to love.handlers for any handlers not specified in the table
 setmetatable(modrun.base_handlers, {__index = function(t, key) return rawget(love.handlers, key) end})
 
@@ -152,63 +193,11 @@ function modrun.setFramerateLimit(fps)
     modrun.max_fps = fps or 0
 end
 
--- Dispatches events to base handlers, and calls callbacks
--- @param event - The name of the event for which the dispatch is being handled
--- @param ... - Arguments associated with the event
--- @returns `true` if any of the event handlers has returned `true`, `false` otherwise
-function modrun.dispatch(event, ...)
-    local args = {...}
-    local cancel = false
-
-    cancel = modrun.base_handlers[event](...)
-    if cancel then return true end
-
-    if event ~= "dispatch" then
-        cancel = modrun.dispatch("dispatch", event, ...)
-    end
-    if cancel then return true end
-
-    for _, entry in pairs(modrun.callbacks[event] or {}) do
-        local cb, err_handler, self_obj, enabled = unpack(entry)
-
-        if enabled then
-            if err_handler == nil then
-                -- If no error handler was provided, we just let the error propagate down the stack
-                cancel = self_obj and cb(self_obj, ...) or cb(...)
-            else
-                -- If an error handler was passed, handle any potential errors via it
-                local success, result
-                if self_obj ~= nil then
-                    success, result = xpcall(cb, function(err) debug.traceback(err) end, self_obj, ...)
-                    if not success then
-                        err_handler(self_obj, {event, ...}, result) -- Pass traceback as well
-                    end
-                else
-                    success, result = xpcall(cb, function(err) debug.traceback(err) end, ...)
-                    if not success then
-                        err_handler({event, ...}, result) -- Pass traceback as well
-                    end
-                end
-                if success then cancel = result end
-            end
-        end
-        if cancel then return true end
-    end
-
-    return false
-end
-
 -- A simple function ran when love has been terminated
 function modrun.shutdown()
     if love.audio then
         love.audio.stop()
     end
-end
-
--- Mirrors the functionality of love.event.push
-function modrun.push(event, ...)
-    error_check(event and modrun.base_handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
-    return love.event.push(event, ...)
 end
 
 -- The run function to replace `love.run` 
@@ -220,7 +209,7 @@ function modrun.run()
     end
 
     if love.event then love.event.pump() end
-    modrun.dispatch("load", arg)
+    modrun.base_handlers.dispatch("load", arg)
     -- We don't want the first frame's dt to include time taken by love.load.
     if love.timer then love.timer.step() end
 
@@ -234,14 +223,14 @@ function modrun.run()
             for event, a, b, c, d in love.event.poll() do
                 -- Quit has to be handled as a special case
                 if event == "quit" then
-                    local cancel = modrun.dispatch("pre_quit", a, b, c, d)
+                    local cancel = modrun.base_handlers.dispatch("pre_quit", a, b, c, d)
                     if not cancel then
-                        cancel = modrun.dispatch(event, a, b, c, d)
+                        cancel = modrun.base_handlers.dispatch(event, a, b, c, d)
                     end
                     if not cancel then modrun.shutdown(); return end
                 end
                 -- The rest of events can be handled normally
-                modrun.dispatch(event,a,b,c,d) -- Does not include update or draw
+                modrun.base_handlers.dispatch(event,a,b,c,d) -- Does not include update or draw
             end
         end
 
@@ -254,19 +243,19 @@ function modrun.run()
         local before_update = love.timer.getTime()
 
         -- Call update and draw
-        modrun.dispatch("pre_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
+        modrun.base_handlers.dispatch("pre_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
         if love.timer then modrun.deltatime = love.timer.getDelta() end
-        modrun.dispatch("update", modrun.deltatime) -- will pass 0 if love.timer is disabled
+        modrun.base_handlers.dispatch("update", modrun.deltatime) -- will pass 0 if love.timer is disabled
         if love.timer then modrun.deltatime = love.timer.getDelta() end
-        modrun.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
+        modrun.base_handlers.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
 
         if love.window and love.graphics and love.window.isCreated() then
             love.graphics.clear()
             love.graphics.origin()
             local start = love.timer.getTime()
-            modrun.dispatch("draw")
+            modrun.base_handlers.dispatch("draw")
             love.graphics.present()
-            modrun.dispatch("postprocess", love.timer.getTime() - start)
+            modrun.base_handlers.dispatch("postprocess", love.timer.getTime() - start)
             love.graphics.present()
         end
         
