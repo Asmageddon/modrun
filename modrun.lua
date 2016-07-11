@@ -88,13 +88,13 @@ function modrun.base_handlers.dispatch(event, ...)
         if cancel then return true end
     end
 
-    for _, entry in pairs(modrun.callbacks[event] or {}) do
-        local cb, err_handler, self_obj, enabled = unpack(entry)
+    for _, cb_entry in pairs(modrun.callbacks[event] or {}) do
+        local cb, err_handler, self_obj, enabled = cb_entry[1], cb_entry[2], cb_entry[3], cb_entry[4]
 
         if enabled then
             if err_handler == nil then
                 -- If no error handler was provided, we just let the error propagate down the stack
-                cancel = self_obj and cb(self_obj, ...) or cb(...)
+                if self_obj then cb(self_obj, ...) else cb(...) end
             else
                 -- If an error handler was passed, handle any potential errors via it
                 local success, result
