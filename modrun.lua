@@ -228,9 +228,10 @@ function modrun.run()
                         cancel = modrun.base_handlers.dispatch(event, a, b, c, d)
                     end
                     if not cancel then modrun.shutdown(); return end
+                else
+                    -- The rest of events can be handled normally
+                    modrun.base_handlers.dispatch(event,a,b,c,d) -- Does not include update or draw
                 end
-                -- The rest of events can be handled normally
-                modrun.base_handlers.dispatch(event,a,b,c,d) -- Does not include update or draw
             end
         end
 
@@ -244,9 +245,7 @@ function modrun.run()
 
         -- Call update and draw
         modrun.base_handlers.dispatch("pre_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
-        if love.timer then modrun.deltatime = love.timer.getDelta() end
         modrun.base_handlers.dispatch("update", modrun.deltatime) -- will pass 0 if love.timer is disabled
-        if love.timer then modrun.deltatime = love.timer.getDelta() end
         modrun.base_handlers.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
 
         if love.window and love.graphics and love.window.isCreated() then
@@ -254,7 +253,6 @@ function modrun.run()
             love.graphics.origin()
             local start = love.timer.getTime()
             modrun.base_handlers.dispatch("draw")
-            love.graphics.present()
             modrun.base_handlers.dispatch("postprocess", love.timer.getTime() - start)
             love.graphics.present()
         end
