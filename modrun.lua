@@ -249,7 +249,7 @@ function modrun.run()
         modrun.base_handlers.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
 
         if love.window and love.graphics and love.window.isCreated() then
-            love.graphics.clear()
+            love.graphics.clear(love.graphics.getBackgroundColor())
             love.graphics.origin()
             local start = love.timer.getTime()
             modrun.base_handlers.dispatch("draw")
