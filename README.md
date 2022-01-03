@@ -1,13 +1,12 @@
 # Features
 
 ## The library adds the following new features:
-  * An FPS limiter
+  * An FPS limiter, disabled by default
   * Ability to add and enable/disable event callbacks
   * Short-circuiting subsequent callbacks, by returning true from them, e.g. to capture input to UI
   * Maintains one copy of the module only, preventing errors should multiple libraries include their own copy
 
 ## The library adds the following new events:
-  * **pre_quit()** - An event that runs before quit, and can be used to stop the program from terminating
   * **dispatch(event, ...)** - A dispatch event, to which all events are sent
   * **pre_update(dt)** - An event that runs before love.update()
   * **post_update(dt)** - An event that runs after love.update()

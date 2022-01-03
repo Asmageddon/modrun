@@ -20,13 +20,12 @@
 --SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -- The library adds the following new features:
---  * An FPS limiter
+--  * An FPS limiter. Disabled by default
 --  * Ability to add and enable/disable event callbacks
 --  * Short-circuiting subsequent callbacks, by returning true from them, e.g. to capture input to UI
 --  * Maintains one copy of the module only, preventing errors should multiple libraries include their own copy
 --
 -- The library adds the following new events:
---  * pre_quit() - An event that runs before quit, and can be used to stop the program from terminating
 --  * dispatch(event, ...) - A dispatch event, to which all events are sent
 --  * pre_update(dt) - An event that runs before love.update()
 --  * post_update(dt) - An event that runs after love.update()
@@ -216,11 +215,8 @@ function modrun.run()
             for event, a, b, c, d, e, f in love.event.poll() do
                 -- Quit has to be handled as a special case
                 if event == "quit" then
-                    local cancel = modrun.handlers.dispatch("pre_quit", a, b, c, d, e, f)
-                    if not cancel then
-                        cancel = modrun.handlers.dispatch(event, a, b, c, d, e, f)
-                    end
-                    if not cancel then modrun.shutdown(); return a or 0 end
+                    local abort_quit = modrun.handlers.dispatch(event, a, b, c, d, e, f)
+                    if not abort_quit then modrun.shutdown(); return a or 0 end
                 else
                     -- The rest of events can be handled normally
                     modrun.handlers.dispatch(event,a,b,c,d,e,f) -- Does not include update or draw
