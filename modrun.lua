@@ -1,4 +1,4 @@
---Copyright (c) 2015 - 2016 Llamageddon <asmageddon@gmail.com>
+--Copyright (c) 2015 - 2022 Llamageddon <asmageddon@gmail.com>
 --
 --Permission is hereby granted, free of charge, to any person obtaining a
 --copy of this software and associated documentation files (the
@@ -55,10 +55,9 @@ end
 local noop = function() end
 
 modrun.deltatime = 0
-modrun.running = false
-modrun.max_fps = 60
+modrun.max_fps = 0
 
-modrun.base_handlers = {
+modrun.handlers = {
     pre_quit = noop,
 
     pre_update = noop,
@@ -78,14 +77,14 @@ modrun.base_handlers = {
 -- @param event - The name of the event for which the dispatch is being handled
 -- @param ... - Arguments associated with the event
 -- @returns `true` if any of the event handlers has returned `true`, `false` otherwise
-function modrun.base_handlers.dispatch(event, ...)
+function modrun.handlers.dispatch(event, ...)
     local args = {...}
     local cancel = false
 
     if event ~= "dispatch" then
-        cancel = modrun.base_handlers[event](...)
+        cancel = modrun.handlers[event](...)
         if cancel then return true end
-        cancel = cancel or modrun.base_handlers.dispatch("dispatch", event, ...)
+        cancel = cancel or modrun.handlers.dispatch("dispatch", event, ...)
         if cancel then return true end
     end
 
@@ -119,7 +118,7 @@ function modrun.base_handlers.dispatch(event, ...)
     return false
 end
 -- Default to love.handlers for any handlers not specified in the table
-setmetatable(modrun.base_handlers, {__index = function(t, key) return rawget(love.handlers, key) end})
+setmetatable(modrun.handlers, {__index = function(t, key) return rawget(love.handlers, key) end})
 
 -- Each entry has the format of: { callback, on_error, self_obj, enabled }
 modrun.callbacks = {} 
@@ -128,8 +127,8 @@ modrun.callbacks = {}
 -- @param event - The name of the event to be registered
 -- @param fail_if_exists - (Optional) Throw an error if the event already exists
 function modrun.registerEventType(event, fail_if_exists)
-    if not modrun.base_handlers[event] then
-        modrun.base_handlers[event] = noop
+    if not modrun.handlers[event] then
+        modrun.handlers[event] = noop
         modrun.callbacks[event] = modrun.callbacks[event] or {}
     else
         if fail_if_exists then
@@ -151,7 +150,7 @@ end
 --      * Event info, in format of {event, ...}
 --      * The error traceback
 function modrun.addCallback(event, callback, self_obj, on_error)
-    error_check(event and modrun.base_handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
+    error_check(event and modrun.handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
     error_check(callback and type(callback) == "function", "No or invalid callback function has been provided: '" .. tostring(callback) .. "'")
     
     modrun.callbacks[event] = modrun.callbacks[event] or {}
@@ -162,7 +161,7 @@ end
 -- @param event - The name of the event for which a callback is being removed
 -- @param callback - The callback function that was originally provided to modrun.addCallback
 function modrun.removeCallback(event, callback)
-    error_check(event and modrun.base_handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
+    error_check(event and modrun.handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
     error_check(callback and modrun.callbacks[event][callback], "Unregistered or invalid callback has been provided")
     
     modrun.callbacks[event][callback] = nil
@@ -172,7 +171,7 @@ end
 -- @param event - The name of the event for which a callback is being enabled
 -- @param callback - The callback function that was originally provided to modrun.addCallback
 function modrun.enableCallback(event, callback)
-    error_check(event and modrun.base_handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
+    error_check(event and modrun.handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
     error_check(callback and modrun.callbacks[event][callback], "Unregistered or invalid callback has been provided")
     
     modrun.callbacks[event][callback][4] = true
@@ -182,7 +181,7 @@ end
 -- @param event - The name of the event for which a callback is being disabled
 -- @param callback - The callback function that was originally provided to modrun.addCallback
 function modrun.disableCallback(event, callback)
-    error_check(event and modrun.base_handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
+    error_check(event and modrun.handlers[event], "Unknown or invalid event type has been provided: '" .. tostring(event) .. "'")
     error_check(callback and modrun.callbacks[event][callback], "Unregistered or invalid callback has been provided")
     
     modrun.callbacks[event][callback][4] = false
@@ -203,18 +202,11 @@ end
 
 -- The run function to replace `love.run` 
 function modrun.run()
-    -- Seed the random number generator
-    if love.math then
-        love.math.setRandomSeed(os.time())
-        for i=1,3 do love.math.random() end
-    end
-
     if love.event then love.event.pump() end
-    modrun.base_handlers.dispatch("load", love.arg.parseGameArguments(arg), arg)
+    modrun.handlers.dispatch("load", love.arg.parseGameArguments(arg), arg)
     -- We don't want the first frame's dt to include time taken by love.load.
     if love.timer then love.timer.step() end
 
-    modrun.running = true
     modrun.deltatime = 0
     -- Main loop time.
     return function() -- Love2D wants a function it can call continuously rather than for love.run() to run a loop itself
@@ -223,16 +215,15 @@ function modrun.run()
             love.event.pump()
             for event, a, b, c, d, e, f in love.event.poll() do
                 -- Quit has to be handled as a special case
-                
                 if event == "quit" then
-                    local cancel = modrun.base_handlers.dispatch("pre_quit", a, b, c, d, e, f)
+                    local cancel = modrun.handlers.dispatch("pre_quit", a, b, c, d, e, f)
                     if not cancel then
-                        cancel = modrun.base_handlers.dispatch(event, a, b, c, d, e, f)
+                        cancel = modrun.handlers.dispatch(event, a, b, c, d, e, f)
                     end
                     if not cancel then modrun.shutdown(); return a or 0 end
                 else
                     -- The rest of events can be handled normally
-                    modrun.base_handlers.dispatch(event,a,b,c,d,e,f) -- Does not include update or draw
+                    modrun.handlers.dispatch(event,a,b,c,d,e,f) -- Does not include update or draw
                 end
             end
         end
@@ -243,16 +234,16 @@ function modrun.run()
         local before_update = love.timer.getTime()
 
         -- Call update and draw
-        modrun.base_handlers.dispatch("pre_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
-        modrun.base_handlers.dispatch("update", modrun.deltatime) -- will pass 0 if love.timer is disabled
-        modrun.base_handlers.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
+        modrun.handlers.dispatch("pre_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
+        modrun.handlers.dispatch("update", modrun.deltatime) -- will pass 0 if love.timer is disabled
+        modrun.handlers.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
 
         if love.graphics and love.graphics.isActive() then
             love.graphics.clear(love.graphics.getBackgroundColor())
             love.graphics.origin()
             local start = love.timer.getTime()
-            modrun.base_handlers.dispatch("draw")
-            modrun.base_handlers.dispatch("postprocess", love.timer.getTime() - start)
+            modrun.handlers.dispatch("draw")
+            modrun.handlers.dispatch("postprocess", love.timer.getTime() - start)
             love.graphics.present()
         end
         
