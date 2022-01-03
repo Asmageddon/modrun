@@ -63,8 +63,8 @@ modrun.base_handlers = {
 
     pre_update = noop,
     post_update = noop,
-    load = function(arg)
-        if love.load then love.load(arg) end
+    load = function(...)
+        if love.load then love.load(...) end
     end,
     draw = function()
         if love.draw then love.draw() end
@@ -84,6 +84,7 @@ function modrun.base_handlers.dispatch(event, ...)
 
     if event ~= "dispatch" then
         cancel = modrun.base_handlers[event](...)
+        if cancel then return true end
         cancel = cancel or modrun.base_handlers.dispatch("dispatch", event, ...)
         if cancel then return true end
     end
@@ -209,37 +210,35 @@ function modrun.run()
     end
 
     if love.event then love.event.pump() end
-    modrun.base_handlers.dispatch("load", arg)
+    modrun.base_handlers.dispatch("load", love.arg.parseGameArguments(arg), arg)
     -- We don't want the first frame's dt to include time taken by love.load.
     if love.timer then love.timer.step() end
 
     modrun.running = true
     modrun.deltatime = 0
     -- Main loop time.
-    while modrun.running do
+    return function() -- Love2D wants a function it can call continuously rather than for love.run() to run a loop itself
         -- Process events.
         if love.event then
             love.event.pump()
-            for event, a, b, c, d in love.event.poll() do
+            for event, a, b, c, d, e, f in love.event.poll() do
                 -- Quit has to be handled as a special case
+                
                 if event == "quit" then
-                    local cancel = modrun.base_handlers.dispatch("pre_quit", a, b, c, d)
+                    local cancel = modrun.base_handlers.dispatch("pre_quit", a, b, c, d, e, f)
                     if not cancel then
-                        cancel = modrun.base_handlers.dispatch(event, a, b, c, d)
+                        cancel = modrun.base_handlers.dispatch(event, a, b, c, d, e, f)
                     end
-                    if not cancel then modrun.shutdown(); return end
+                    if not cancel then modrun.shutdown(); return a or 0 end
                 else
                     -- The rest of events can be handled normally
-                    modrun.base_handlers.dispatch(event,a,b,c,d) -- Does not include update or draw
+                    modrun.base_handlers.dispatch(event,a,b,c,d,e,f) -- Does not include update or draw
                 end
             end
         end
 
         -- Update dt, as we'll be passing it to update
-        if love.timer then
-            love.timer.step()
-            modrun.deltatime = love.timer.getDelta()
-        end
+        if love.timer then modrun.deltatime = love.timer.step() end
         
         local before_update = love.timer.getTime()
 
@@ -248,7 +247,7 @@ function modrun.run()
         modrun.base_handlers.dispatch("update", modrun.deltatime) -- will pass 0 if love.timer is disabled
         modrun.base_handlers.dispatch("post_update", modrun.deltatime) -- will pass 0 if love.timer is disabled
 
-        if love.window and love.graphics and love.window.isCreated() then
+        if love.graphics and love.graphics.isActive() then
             love.graphics.clear(love.graphics.getBackgroundColor())
             love.graphics.origin()
             local start = love.timer.getTime()
@@ -256,6 +255,8 @@ function modrun.run()
             modrun.base_handlers.dispatch("postprocess", love.timer.getTime() - start)
             love.graphics.present()
         end
+        
+        if love.timer then love.timer.sleep(0.001) end
         
         -- If vsync is disabled, and FPS limit is enabled, enforce it
         local w, h, flags = love.window.getMode()
